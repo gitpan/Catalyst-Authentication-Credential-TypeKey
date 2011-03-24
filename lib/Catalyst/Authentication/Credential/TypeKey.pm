@@ -5,7 +5,7 @@ use Moose;
 use MooseX::Types::Common::String qw/ NonEmptySimpleStr SimpleStr/;
 use namespace::autoclean;
 
-our $VERSION = '0.002';
+our $VERSION = '0.003';
 
 has [qw/ key_cache version skip_expiry_check key_url /] => (
     isa      => NonEmptySimpleStr,
@@ -31,13 +31,24 @@ sub _build__authen_typekey {
     return $tk;
 }
 
+sub BUILDARGS {
+    my ( $class, $config, $app, $realm ) = @_;
+    unless ( $config->{version} and $config->{key_url} ) {
+        Catalyst::Exception->throw(
+            __PACKAGE__ . " credential for realm " . $realm->name . " missing version and key_url"
+        );
+    }
+    return $config;
+}
+
 =head1 NAME
 
 Catalyst::Authentication::Credential::TypeKey - TypeKey authentication
+(in new Catalyst Authentication )
 
 =head1 VERSION
 
-Version 0.001
+Version 0.003
 
 =head1 SYNOPSIS
 
@@ -105,22 +116,6 @@ the same terms as perl itself.
 =cut
 
 
-=head2 BUILDARGS
-
-Extracts from the authentication config
-
-=cut
-
-sub BUILDARGS {
-    my ( $class, $config, $app, $realm ) = @_;
-    unless ( $config->{version} and $config->{key_url} ) {
-        Catalyst::Exception->throw(
-            __PACKAGE__ . " credential for realm " . $realm->name . " missing version and key_url"
-        );
-    }
-    return $config;
-}
-
 =head2 authenticate
 
 Standard authentication method
@@ -137,10 +132,17 @@ sub authenticate {
         return;
     }
 
+    my $auth_store = $c->default_auth_store( );
+
+    $c->log->info('Authenticated store: ' . $c->get_auth_store_name( $auth_store ) )
+        if ( $c->debug );
+
+    $c->model( $auth_store->{config}->{user_class} )->find_or_create( $auth_info );
+
     return unless $auth_info;
     my $user =  $realm->find_user( $auth_info, $c );
     unless ( $user ) {
-        $c->log->error("Authenticated user, but could not locate in our Store!");
+        $c->log->error('Authenticated user, but could not locate in our Store!');
         return;
     }
     return $user;
